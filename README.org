@@ -1,0 +1,19 @@
+#+TITLE: Analysis UnarXiv repository
+
+
+* gen_metadata.py
+- Creates csv files for each year as metadata_<year>.csv
+* assemble.py
+- creates disciplines.csv and categories.csv from all metadata files
+- Disciplines: all unique disciplines and their counts in the metadata files (all years)
+- Categories: all unique categories and their counts in the metadata files (all years)
+* aggregate.py
+- Aggregate data for each year and discipline
+#+BEGIN_SRC jupyter-python :session py :exports both
+domain = "Physics"
+years = [5, 6, 7, 8, 9, 10]
+#+END_SRC
+- process_data reads metadata files and creates a data_locations dictionary with the location of the data for each year and discipline in the new folder
+- aggregate_data reads the data_locations dictionary and creates a subset of original data with just paragraphs and saves in aggregated_<domain>_<year[0]>_<year[1]>.csv
+* generate_embeddings.py
+- Reads
