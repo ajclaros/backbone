@@ -29,7 +29,7 @@ embeddings = HuggingFaceEmbeddings(
 
 def process_line(name, i, line, embed_path):
     if f"{name}_{i}.npy" in os.listdir(embed_path):
-        continue
+        return
     data = []
     for j, section in enumerate(line["body_text"]):
         metadata = {
