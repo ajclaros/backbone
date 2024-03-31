@@ -22,6 +22,8 @@ model_kwargs = {"device": "cuda"}
 encode_kwargs = {"normalize_embeddings": False}
 embeddings = HuggingFaceEmbeddings(
     model_name="allenai/scibert_scivocab_uncased",
+    model_kwargs=model_kwargs,
+    encode_kwargs=encode_kwargs,
 )
 
 
