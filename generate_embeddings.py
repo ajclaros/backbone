@@ -68,3 +68,5 @@ for ix, name in enumerate(files[:]):
             for future in concurrent.futures.as_completed(results):
                 future.result()
                 results = []
+
+print("Done!")
