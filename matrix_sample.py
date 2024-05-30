@@ -27,7 +27,18 @@ columns = [
     "sec_number",
     "text",
     "embedding",
+    "arxiv classification"
+    "length",
+    "year",
 ]
+# edge attributes
+edge_attrs = [
+    "distance",
+    "in_doc",
+    "doc_i",
+    "doc_j",
+    "paper_id_i",
+    "paper_id_j",]
 # df, filename = process_files(
 #     years, num_docs, columns, domain="Physics", save=True, process_by="year"
 # )

@@ -3,15 +3,20 @@ import numpy as np
 import pandas as pd
 import os
 from sklearn.neighbors import NearestNeighbors
+import networkx as nx
 from datetime import datetime
 from sklearn.manifold import TSNE
 from flexible_clustering import hnsw
+from tqdm import tqdm, trange
 
 slategray = np.array([112, 128, 144]) / 255
 slategray = np.append(slategray, 0.1)
 
 
 def find_k_nearest_neighbors(input_vec, dataset, k=5):
+    """
+    Finds the k nearest neighbors in the dataset
+    """
     knn = NearestNeighbors(n_neighbors=k, metric="l2")
     knn.fit(dataset)
     distances, indices = knn.kneighbors([input_vec])
@@ -19,6 +24,9 @@ def find_k_nearest_neighbors(input_vec, dataset, k=5):
 
 
 def search_year(ix, year, df, k=5):
+    """
+    Searches for the year and returns the indices of the documents
+    """
     vec = np.array(df.iloc[ix]["embedding"])
     mask = df["year"] < year
     dataset = df[mask]
@@ -28,6 +36,9 @@ def search_year(ix, year, df, k=5):
 
 
 def backward_search_year(ix, year, df, k=5):
+    """
+    Searches for the previous year and returns the indices of the documents
+    """
     from_indices = [ix]
     if year == min(df["year"].unique()):
         print("No previous year")
@@ -50,14 +61,36 @@ def backward_search_year(ix, year, df, k=5):
 
 
 def month_number_to_string(month):
+    """
+    Converts month number to string
+    """
     return datetime(2000, month, 1).strftime("%B")
 
 
+def str_year(year):
+    if year < 10:
+        return f"0{year}"
+    return str(year)
+
+
 def int_year(year):
+    """
+    Returns the year as an integer
+    """
     if year > 24:
         return int(year + 1900)
     else:
         return int(year + 2000)
+
+
+def str_month(month):
+    """
+    Returns the month as an integer
+    """
+    if month > 9:
+        return int(month)
+    else:
+        return "0" + str(month)
 
 
 def l2_distance(a, b):
@@ -69,6 +102,10 @@ def cosine_distance(a, b):
 
 
 def distance_cluster(df, distance):
+    """
+    Clusters the dataframe based on the distance.
+    If the distance between two points is less than the distance, the two points are considered to be in the same cluster
+    """
     index = 0
     df_copy = df.copy()
     # mask = df["text"].str.len() > 100
@@ -103,6 +140,30 @@ def distance_cluster(df, distance):
     return df_copy
 
 
+def distance_cluster2(df, distance):
+    """
+    Clusters the dataframe based on the distance.
+    If the distance between two points is less than the distance, the two points are considered to be in the same cluster "
+    """
+    df_copy = df.copy()
+    t_df = pd.DataFrame(columns=df.columns)
+
+    for group, data in tqdm(df_copy.groupby("paper_id")):
+        for i, row in data.iterrows():
+            mask = (
+                data[["tsne1", "tsne2"]].apply(
+                    lambda x: np.linalg.norm(x - row[["tsne1", "tsne2"]]), axis=1
+                )
+                < distance
+            )
+            data.loc[mask, "tsne1"] = data[mask]["tsne1"].mean()
+            data.loc[mask, "tsne2"] = data[mask]["tsne2"].mean()
+            data.loc[mask, "cluster_size"] = data[mask].shape[0]
+            data.drop(data[mask].index[1:].tolist(), inplace=True)
+            t_df = pd.concat([t_df, data])
+    return t_df
+
+
 def arg_sort_array(arr, files):
     """
     arr is the numerical array to sort by, files is the list to return sorted
@@ -115,15 +176,24 @@ def arg_sort_array(arr, files):
 
 
 def folder_year_from_filename(filename):
+    """
+    Returns the year from the filename
+    """
     return filename.split("_")[2][:2]
 
 
 def folder_month_from_filename(filename):
+    """
+    Returns the month from the filename
+    """
     return filename.split("_")[2][2:4]
 
 
 def random_file_given_year(year, years=[5, 6, 7, 8, 9], num_files=1):
-    files = os.listdir("aggregated_physics_5_9/embeds")
+    """
+    Returns a random file given a year
+    """
+    files = os.listdir("physics_5_9/embeds")
     files = [f for f in files if "0" + str(year) in f.split("_")[0][:2]]
     # files = [f for f in files if "0" + str(year) in f.split("_")[0][:2]]
     # print(f.split("_")[0][:2])
@@ -134,6 +204,9 @@ def random_file_given_year(year, years=[5, 6, 7, 8, 9], num_files=1):
 
 
 def embed_paragraphs(docs):
+    """
+    Embeds paragraphs in a list of documents
+    """
     embeds = []
     for doc in docs:
         embeds.append(embeddings.embed_query(doc.page_content))
@@ -141,20 +214,33 @@ def embed_paragraphs(docs):
 
 
 def get_files_from_year(year, num_docs=200):
-    files = os.listdir("aggregated_physics_5_9/data")
+    """
+    Fetches files from a given year. If num_docs is -1, fetches all files
+    """
+    files = os.listdir("physics_5_9/data")
     files = [f for f in files if "0" + str(year) in f.split("_")[2][:2]]
     # select a random sample of files
-    files = list(set(np.random.choice(files, num_docs)))
+    if num_docs == -1:
+        files = list(set(files))
+    else:
+        files = list(set(np.random.choice(files, num_docs)))
     return files
 
 
 def group_files_by_month(files, num_docs=200):
+    """
+    Groups files by month. If num_docs is -1, fetches all files
+    """
     month_groups = {}
+    if num_docs == -1:
+        num_docs = len(files)
     for i in range(1, 13):
         s = f"{i:02d}"
         month_groups[s] = [f for f in files if s in f.split("_")[2][2:4]]
     total_docs = {}
     for month, files in month_groups.items():
+        if num_docs == -1:
+            num_docs = len(files)
         file_npy_dict = fetch_files_by_group(files, month, int(np.ceil(num_docs / 12)))
         for k, v in file_npy_dict.items():
             total_docs[k] = v
@@ -177,12 +263,20 @@ def group_files_by_month(files, num_docs=200):
 
 
 def fetch_files_by_group(files, month, num_docs=10):
+    """
+    Fetches a random sample of files from the list of files
+    if num_docs is -1, fetches all files
+    :param files: list of files
+    :param month: month to fetch if num_docs is -1, fetches all files, skip for now
+    :param num_docs: number of files to fetch if -1, fetches all files
+    """
     total_docs = {}
     for name in files:
         npy_name = name.split(".")[0].split("_")[2:]
         npy_name = "_".join(npy_name)
-        npy_files = os.listdir("aggregated_physics_5_9/embeds")
+        npy_files = os.listdir("physics_5_9/embeds")
         npy_files = [f for f in npy_files if npy_name in f]
+        print(f"Number of files: {len(npy_files)}")
         npy_files = np.random.choice(npy_files, num_docs).tolist()
         # organize by year, month, num, index
         temp = [f.split(".")[0].split("_") for f in npy_files]
@@ -195,9 +289,14 @@ def fetch_files_by_group(files, month, num_docs=10):
     return total_docs
 
 
-def process_files(
-    years, num_docs, columns, domain="Physics", save=True, process_by="year"
-):
+def process_files(years, num_docs, columns, domain="Physics", save=True):
+    """
+    Processes the files and returns a dataframe
+    :param years: list of years to process
+    :param num_docs: number of documents to process
+    """
+    from tqdm import tqdm
+
     df = pd.DataFrame(columns=columns)
     min_year = min(years)
     max_year = max(years)
@@ -206,16 +305,16 @@ def process_files(
         list_files = get_files_from_year(year, num_docs)
         print(list_files)
         total_files = group_files_by_month(list_files, num_docs)
-        for filename in total_files.keys():
+        for filename in tqdm(total_files.keys()):
             print(f"Processing {filename}")
             location = filename.split(".")[0].split("_")[2:]
             with jsonlines.open(
-                f"aggregated_{domain.lower()}_{min_year}_{max_year}/data/{filename}"
+                f"{domain.lower()}_{min_year}_{max_year}/data/{filename}"
             ) as f:
                 for i, line in enumerate(f):
                     npy_file = "_".join(location) + f"_{i}.npy"
                     if npy_file in total_files[filename]:
-                        embeds = np.load(f"aggregated_physics_5_9/embeds/{npy_file}")
+                        embeds = np.load(f"physics_5_9/embeds/{npy_file}")
                         print(
                             f"{npy_file} has {embeds.shape[0]} embeddings and {len(line['body_text'])} paragraphs"
                         )
@@ -241,14 +340,22 @@ def process_files(
                             )
     df.reset_index(inplace=True, drop=True)
     df["year"] = df["year"].apply(lambda x: int_year(x))
+    if num_docs == -1:
+        filename = f"./{domain.lower()}_{min_year}_{max_year}/{num_docs}_embeds.pkl"
+    else:
+        filename = (
+            f"./{domain.lower()}_{min_year}_{max_year}/rand_{num_docs}_embeds.pkl"
+        )
     df = process_date(df, by="year")
-    filename = f"./aggregated_{domain.lower()}_{min_year}_{max_year}/rand_{num_docs}_embeds.pkl"
     if save:
         df.to_pickle(f"{filename}")
     return df, filename
 
 
 def process_date(df, by="year", save=True):
+    """
+    Adds a date column to the dataframe based on the year or month
+    """
     if by == "year":
         df["date"] = df.apply(
             lambda x: datetime(x["year"] + 2000, 1, 1).timestamp(), axis=1
@@ -261,6 +368,9 @@ def process_date(df, by="year", save=True):
 
 
 def apply_tsne(df):
+    """
+    Applies tsne to the embeddings and adds the tsne1 and tsne2 columns to the dataframe
+    """
     X = np.array(df["embedding"].values.tolist())
     tsne = TSNE(n_components=2, random_state=42, early_exaggeration=12, perplexity=40)
     tsne_results = tsne.fit_transform(X)
@@ -270,6 +380,9 @@ def apply_tsne(df):
 
 
 def get_matrix(df, m=2, ef=200, level=0, shuffle=False):
+    """
+    Returns a matrix and doc boundaries
+    """
     embeds = df["embedding"].values.tolist()
     doc_ids = df["paper_id"].unique()
     doc_boundaries = [
@@ -291,21 +404,39 @@ def get_matrix(df, m=2, ef=200, level=0, shuffle=False):
             y = indices[key2]
             matrix[x, y] = value2
             matrix[y, x] = value2
-            # matrix[key, key2] = value2
-
-            # matrix[key2, key] = value2
-
-    # for graph in graphs:
-    #     for key, value in graph.items():
-    #         if value == {}:
-    #             continue
-    #         for key2, value2 in value.items():
-    #             matrix[key, key2] = value2
-    #             matrix[key2, key] = value2
     return matrix, doc_boundaries
 
 
+def get_matrix2(df, m=2, ef=200, level=0, shuffle=False, metric=l2_distance):
+    """
+    Returns a networkx graph and doc boundaries
+    """
+    embeds = df["embedding"].values.tolist()
+    doc_ids = df["paper_id"].unique()
+    doc_boundaries = [
+        df[df["paper_id"] == doc_ids[i]].shape[0] for i in range(len(doc_ids))
+    ]
+    doc_boundaries = np.cumsum(doc_boundaries)
+    cluster = hnsw.HNSW(metric, m=m, ef=ef)
+    print("Adding embeddings")
+    cluster, indices = add_embeds(embeds, cluster, shuffle=shuffle)
+    graphs = cluster._graphs
+    print(f"Number of graphs: {len(graphs)}")
+    print("Filling matrix")
+    for key, value in graphs[level].items():
+        if value == {}:
+            continue
+        for key2, value2 in value.items():
+            graphs[level][key][key2] = {"weight": value2}
+    network = nx.from_dict_of_dicts(graphs[level])
+    return network, doc_boundaries
+
+
 def add_embeds(embeds, cluster, shuffle=False):
+    """
+    Adds embeddings to the cluster
+    """
+
     # if shuffle, add embeds in random order
     # keep track of original indices and reassemble matrix in original order
 
@@ -346,72 +477,115 @@ def drop_if_within_distance(df, distance=0.5):
     return df_copy
 
 
-# year = 7
-# tmp = df_copy[df_copy["year"] == year]
-# randomly select row
-# row = tmp.sample()
-# get index in original dataframe
+def distance_matrix(df, metric=cosine_distance):
+    dist_matrix = np.zeros((df.shape[0], df.shape[0]))
+    for i in trange(df.shape[0]):
+        for j in range(df.shape[0]):
+            if i == j:
+                dist_matrix[i, j] = 0
+            x = metric(df.iloc[i]["embedding"], df.iloc[j]["embedding"])
+            dist_matrix[i, j] = x
+            dist_matrix[j, i] = x
+    dist_matrix = (dist_matrix - dist_matrix.min()) / (
+        dist_matrix.max() - dist_matrix.min()
+    )
+    dist_matrix[dist_matrix > 0] = 1 - dist_matrix[dist_matrix > 0]
+    return dist_matrix
 
 
-# df_copy["date"] = df_copy.apply(
-#     lambda x: datetime(x["year"] + 2000, 1, 1).timdf_copy["date"] = df_copy.apply(lambda x: datetime(x["year"]+2000, 1, 1).timestamp(), axis=1)
-# values.tolist()), 5)
-# indices = backward_search_year(row, 6, df_copy, 5)
-# from_indices, to_indices = backward_search_year(row.index[0], year, df_copy, 10)
-# colors = plt.cm.jet(np.linspace(0, 1, len(indices)))
-# network = nx.Graph()
-# network = nx.from_numpy_array(matrix)
-# nx.set_node_attributes(network, df_copy["paper_id"].to_dict(), "paper_id")
-# nx.set_node_attributes(network, df_copy["tsne1"].to_dict(), "tsne1")
-# nx.set_node_attributes(network, df_copy["tsne2"].to_dict(), "tsne2")
-# nx.set_node_attributes(network, df_copy["date"].to_dict(), "date")
-# for i, ix in enumerate(indices):
-#     for index in ix:
-#         df_copy.at[index, "color"] = colors[i]
+def distance_matrix_parallel(df, metric=cosine_distance):
+    import concurrent.futures
 
-# colors = plt.cm.viridis(np.linspace(0, 1, len(to_indices)))
-# df_copy["color"] = [slategray for i in range(df_copy.shape[0])]
-# df_copy.at[row.index[0], "color"] = [1, 0, 0, 1]
-# nx.set_node_attributes(network, df_copy["color"].to_dict(), "color")
-# node_color = [network.nodes[n]["color"] for n in network.nodes]
+    dist_matrix = np.zeros((df.shape[0], df.shape[0]))
 
-# pos = {}
-# for node in network.nodes:
-#     pos[node] = (
-#         network.nodes[node]["date"],
-#         network.nodes[node]["tsne1"],
-#         network.nodes[node]["tsne2"],
-#     )
-# node_xyz = np.array([pos[v] for v in network])
-# # edge_xyz = np.array([(pos[u], pos[v]) for u, v in network.edges])
+    def distance(i, j):
+        if i == j:
+            return 0
+        return metric(df.iloc[i]["embedding"], df.iloc[j]["embedding"])
+
+    with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
+        results = {
+            executor.submit(distance, i, j): (i, j)
+            for i in trange(df.shape[0])
+            for j in range(df.shape[0])
+        }
+        for future in concurrent.futures.as_completed(results):
+            i, j = results[future]
+            dist_matrix[i, j] = future.result()
+    return dist_matrix
 
 
-# fig = plt.figure()
-# ax = fig.add_subplot(111, projection="3d")
-# ax.scatter(node_xyz[:, 0], node_xyz[:, 1], node_xyz[:, 2], c=node_color, s=10)
+def in_doc(doc_i, doc_j, df):
+    """
+    Returns a tuple of whether the two documents are in the same paper, the index of the second document, and the distance between the two documents
+    """
+    distance = l2_distance(df.iloc[doc_i]["embedding"], df.iloc[doc_j]["embedding"])
+    return (df.iloc[doc_i]["paper_id"] == df.iloc[doc_j]["paper_id"], doc_j, distance)
 
-# plt.show()
 
-# for ix, val in to_indices.items():
-#     for v in val:
-#         ax.plot(
-#             [pos[ix][0], pos[v][0]],
-#             [pos[ix][1], pos[v][1]],
-#             [pos[ix][2], pos[v][2]],
-#             color="k",
-#             ls="--",
-#         )
+def in_doc_list(doc_i, doc_list, df):
+    """
+    Returns a list of tuples of whether the two documents are in the same paper, the index of the second document, and the distance between the two documents
+    """
+    return [in_doc(doc_i, doc_j, df) for i, doc_j in enumerate(doc_list) if i != doc_i]
 
-# ax.set_xticks(df_copy["date"].unique())
-# # set label to year-month
-# ax.set_xticklabels(
-#     [datetime.fromtimestamp(date).strftime("%Y") for date in df_copy["date"].unique()]
-# )
-# ax.set_title("Semantic Network")
-# ax.set_xlabel("date")
-# # rotate x axis labels
-# # plt.xticks(rotation=90)
-# ax.set_ylabel("tsne1")
 
-# ax.set_zlabel("tsne2")
-# plt.show()
+def knn_list(input_vec, df, k=5):
+    """
+    Returns a list of tuples of whether the two documents are in the same paper, the index of the second document, and the distance between the two documents
+    """
+    distances, indices = find_k_nearest_neighbors(input_vec, df["embedding"], k)
+    return in_doc_list(doc_i, indices, df)
+
+
+def grab_doc(paper_id, year, month, part, agg_path=None):
+    """
+    Retrieves a document from the jsonl file
+    """
+    if path is None:
+        paragraphs = []
+        part = f"00{part}"
+        with jsonlines.open(
+            f"../{str_year(year)}/arXiv_src_{str_year(year)}{str_month(month)}_{part}.jsonl"
+        ) as f:
+            for i, line in enumerate(f, 1):
+                if line["paper_id"] == paper_id:
+                    return line
+    if agg_ath:
+        path = [
+            f
+            for f in os.listdir(path)
+            if f"{str_year(year)}_{str_month(month)}_{part}" in f
+        ]
+
+        paragraphs = []
+        with jsonlines.open(
+            f"{agg_path}/{str_year(year)}_{str_month(month)}_{part}.jsonl"
+        ) as f:
+            for i, line in enumerate(f, 1):
+                if line["paper_id"] == paper_id:
+                    return line
+
+
+def embed_paper(paper_obj):
+    """
+    Embeds a paper object
+    """
+    from langchain.embeddings import HuggingFaceEmbeddings
+    from langchain_core.documents import Document
+
+    model_kwargs = {"device": "cuda"}
+    encode_kwargs = {"normalize_embeddings": False}
+    embeddings = HuggingFaceEmbeddings(
+        model_name="allenai/scibert_scivocab_uncased",
+        model_kwargs=model_kwargs,
+        encode_kwargs=encode_kwargs,
+    )
+
+    embeds = []
+    for section in paper_obj["body_text"]:
+        embeds.append(embeddings.embed_query(section["text"]))
+    return np.array(embeds)
+
+
+# physics/0501005

@@ -7,7 +7,7 @@ import concurrent.futures
 
 
 domain = "Physics"
-years = [5, 6, 7, 8, 9, 10]
+years = [5, 6, 7, 8, 9]
 
 
 def folder_year_from_filename(filename):
@@ -123,5 +123,5 @@ def aggregate_data(domain, years, threads=4):
                     write_tasks.append(write_task)
             concurrent.futures.wait(write_tasks)
 
-
+process_data(domain, years)
 aggregate_data(domain, years, threads=30)
