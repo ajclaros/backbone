@@ -1,0 +1,27 @@
+#! /bin/bash
+
+#SBATCH -J embeddings
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=anclaro@iu.edu
+#SBATCH -p gpu
+#SBATCH -o %j.out
+#SBATCH -t 4:00:00
+#SBATCH --mem=32G
+#SBATCH -A r00272
+#SBATCH --cpus-per-task=10
+#SBATCH --gpus-per-node=1
+
+module load python/gpu/3.11.5
+cd /N/project/backboneScience/unarXiv/data/
+
+
+
+# parameters:
+# -p: number of processes
+# -d: discipline
+# -y: years
+# -dir: direction of the embedding loop. Try to run 2 parallel jobs going in opposite directions to speed up the process
+domain="Mathematics"
+years="5 6 7 8 9"
+
+python generate_embeddings.py -p 10 -d "$domain" -y "$years" -dir -1
